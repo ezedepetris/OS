@@ -165,6 +165,7 @@ UPROGS=\
 	_kill\
 	_ln\
 	_ls\
+	_quantumtest\
 	_mkdir\
 	_mv\
 	_rm\
