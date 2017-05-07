@@ -24,6 +24,7 @@ int sleep(int);
 int uptime(void);
 int lseek(int, int, int);
 int isatty(int);
+int procstat(void);
 
 // ulib.c
 int stat(char*, struct stat*);
