@@ -6,15 +6,23 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include <stddef.h>
+
+struct level{
+  struct proc *first;
+  struct proc *last;
+};
 
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
+  struct level mlf[NLEVELS];
 } ptable;
 
 static struct proc *initproc;
 
 int nextpid = 1;
+int current_level = 0;
 extern void forkret(void);
 extern void trapret(void);
 
@@ -99,6 +107,11 @@ userinit(void)
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
+  p->level = 0;
+  p->next = NULL;
+  ptable.mlf[0].first = p;
+  ptable.mlf[0].last = p;
+
   p->state = RUNNABLE;
 }
 
@@ -120,6 +133,46 @@ growproc(int n)
   proc->sz = sz;
   switchuvm(proc);
   return 0;
+}
+
+void
+dequeue()
+{
+  if(ptable.mlf[proc->level].first->next == NULL){
+    ptable.mlf[proc->level].first = NULL;
+    ptable.mlf[proc->level].last = NULL;
+  }
+  else{
+    ptable.mlf[proc->level].first = ptable.mlf[proc->level].first->next;
+  }
+}
+
+void
+enqueue(struct proc *p)
+{
+  int level = p->level;
+  if (ptable.mlf[level].first == NULL){
+    ptable.mlf[level].first = p;
+    ptable.mlf[level].last = p;
+  }
+  else{
+    ptable.mlf[level].last->next = p;
+    ptable.mlf[level].last = p;
+  }
+  p->next = NULL;
+}
+
+void
+growup(void)
+{
+  if(proc->level>0) proc->level--;
+}
+
+
+void
+growold(void)
+{
+  if(proc->level<3) proc->level++;
 }
 
 // Create a new process copying p as the parent.
@@ -155,7 +208,9 @@ fork(void)
   np->cwd = idup(proc->cwd);
 
   pid = np->pid;
+  np->level = 0;
   np->state = RUNNABLE;
+  enqueue(np);
   safestrcpy(np->name, proc->name, sizeof(proc->name));
   return pid;
 }
@@ -265,15 +320,14 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
-
+    while(ptable.mlf[current_level].first != NULL){
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
+      p = ptable.mlf[current_level].first;
       proc = p;
       switchuvm(p);
+      dequeue();
       p->state = RUNNING;
       p->ticks = 0;
       swtch(&cpu->scheduler, proc->context);
@@ -283,6 +337,9 @@ scheduler(void)
       // It should have changed its p->state before coming back.
       proc = 0;
     }
+    current_level++;
+    current_level %= 4;
+
     release(&ptable.lock);
 
   }
@@ -314,6 +371,7 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   proc->state = RUNNABLE;
+  enqueue(proc);
   sched();
   release(&ptable.lock);
 }
@@ -384,8 +442,10 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan){
       p->state = RUNNABLE;
+      enqueue(p);
+    }
 }
 
 // Wake up all processes sleeping on chan.

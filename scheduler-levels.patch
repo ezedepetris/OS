@@ -1,0 +1,650 @@
+Binary files xv6-mac/.DS_Store and xv6/.DS_Store differ
+diff -rupN xv6-mac/Makefile xv6/Makefile
+--- xv6-mac/Makefile	2016-04-07 10:19:57.000000000 -0300
++++ xv6/Makefile	2017-05-10 16:33:06.000000000 -0300
+@@ -165,6 +165,7 @@ UPROGS=\
+ 	_kill\
+ 	_ln\
+ 	_ls\
++	_quantumtest\
+ 	_mkdir\
+ 	_mv\
+ 	_rm\
+Binary files xv6-mac/_lotprints and xv6/_lotprints differ
+Binary files xv6-mac/_size and xv6/_size differ
+diff -rupN xv6-mac/defs.h xv6/defs.h
+--- xv6-mac/defs.h	2014-02-10 22:37:16.000000000 -0300
++++ xv6/defs.h	2017-05-17 13:59:12.000000000 -0300
+@@ -116,6 +116,8 @@ void            userinit(void);
+ int             wait(void);
+ void            wakeup(void*);
+ void            yield(void);
++void            growold(void);
++void            growup(void);
+ 
+ // swtch.S
+ void            swtch(struct context**, struct context*);
+diff -rupN xv6-mac/param.h xv6/param.h
+--- xv6-mac/param.h	2014-02-10 22:37:16.000000000 -0300
++++ xv6/param.h	2017-05-17 13:34:02.000000000 -0300
+@@ -9,4 +9,5 @@
+ #define ROOTDEV       1  // device number of file system root disk
+ #define MAXARG       32  // max exec arguments
+ #define LOGSIZE      10  // max data sectors in on-disk log
+-
++#define MAXTICS      5   // max tics of clock before context switch
++#define NLEVELS      4   // size of levels on mlf
+diff -rupN xv6-mac/proc.c xv6/proc.c
+--- xv6-mac/proc.c	2014-02-10 22:37:16.000000000 -0300
++++ xv6/proc.c	2017-05-17 14:13:14.000000000 -0300
+@@ -6,15 +6,23 @@
+ #include "x86.h"
+ #include "proc.h"
+ #include "spinlock.h"
++#include <stddef.h>
++
++struct level{
++  struct proc *first;
++  struct proc *last;
++};
+ 
+ struct {
+   struct spinlock lock;
+   struct proc proc[NPROC];
++  struct level mlf[NLEVELS];
+ } ptable;
+ 
+ static struct proc *initproc;
+ 
+ int nextpid = 1;
++int current_level = 0;
+ extern void forkret(void);
+ extern void trapret(void);
+ 
+@@ -55,11 +63,11 @@ found:
+     return 0;
+   }
+   sp = p->kstack + KSTACKSIZE;
+-  
++
+   // Leave room for trap frame.
+   sp -= sizeof *p->tf;
+   p->tf = (struct trapframe*)sp;
+-  
++
+   // Set up new context to start executing at forkret,
+   // which returns to trapret.
+   sp -= 4;
+@@ -80,7 +88,7 @@ userinit(void)
+ {
+   struct proc *p;
+   extern char _binary_initcode_start[], _binary_initcode_size[];
+-  
++
+   p = allocproc();
+   initproc = p;
+   if((p->pgdir = setupkvm()) == 0)
+@@ -99,6 +107,11 @@ userinit(void)
+   safestrcpy(p->name, "initcode", sizeof(p->name));
+   p->cwd = namei("/");
+ 
++  p->level = 0;
++  p->next = NULL;
++  ptable.mlf[0].first = p;
++  ptable.mlf[0].last = p;
++
+   p->state = RUNNABLE;
+ }
+ 
+@@ -108,7 +121,7 @@ int
+ growproc(int n)
+ {
+   uint sz;
+-  
++
+   sz = proc->sz;
+   if(n > 0){
+     if((sz = allocuvm(proc->pgdir, sz, sz + n)) == 0)
+@@ -122,6 +135,46 @@ growproc(int n)
+   return 0;
+ }
+ 
++void
++dequeue()
++{
++  if(ptable.mlf[proc->level].first->next == NULL){
++    ptable.mlf[proc->level].first = NULL;
++    ptable.mlf[proc->level].last = NULL;
++  }
++  else{
++    ptable.mlf[proc->level].first = ptable.mlf[proc->level].first->next;
++  }
++}
++
++void
++enqueue(struct proc *p)
++{
++  int level = p->level;
++  if (ptable.mlf[level].first == NULL){
++    ptable.mlf[level].first = p;
++    ptable.mlf[level].last = p;
++  }
++  else{
++    ptable.mlf[level].last->next = p;
++    ptable.mlf[level].last = p;
++  }
++  p->next = NULL;
++}
++
++void
++growup(void)
++{
++  if(proc->level>0) proc->level--;
++}
++
++
++void
++growold(void)
++{
++  if(proc->level<3) proc->level++;
++}
++
+ // Create a new process copying p as the parent.
+ // Sets up stack to return as if from system call.
+ // Caller must set state of returned proc to RUNNABLE.
+@@ -153,9 +206,11 @@ fork(void)
+     if(proc->ofile[i])
+       np->ofile[i] = filedup(proc->ofile[i]);
+   np->cwd = idup(proc->cwd);
+- 
++
+   pid = np->pid;
++  np->level = 0;
+   np->state = RUNNABLE;
++  enqueue(np);
+   safestrcpy(np->name, proc->name, sizeof(proc->name));
+   return pid;
+ }
+@@ -265,16 +320,16 @@ scheduler(void)
+ 
+     // Loop over process table looking for process to run.
+     acquire(&ptable.lock);
+-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+-      if(p->state != RUNNABLE)
+-        continue;
+-
++    while(ptable.mlf[current_level].first != NULL){
+       // Switch to chosen process.  It is the process's job
+       // to release ptable.lock and then reacquire it
+       // before jumping back to us.
++      p = ptable.mlf[current_level].first;
+       proc = p;
+       switchuvm(p);
++      dequeue();
+       p->state = RUNNING;
++      p->ticks = 0;
+       swtch(&cpu->scheduler, proc->context);
+       switchkvm();
+ 
+@@ -282,6 +337,9 @@ scheduler(void)
+       // It should have changed its p->state before coming back.
+       proc = 0;
+     }
++    current_level++;
++    current_level %= 4;
++
+     release(&ptable.lock);
+ 
+   }
+@@ -313,6 +371,7 @@ yield(void)
+ {
+   acquire(&ptable.lock);  //DOC: yieldlock
+   proc->state = RUNNABLE;
++  enqueue(proc);
+   sched();
+   release(&ptable.lock);
+ }
+@@ -328,12 +387,12 @@ forkret(void)
+ 
+   if (first) {
+     // Some initialization functions must be run in the context
+-    // of a regular process (e.g., they call sleep), and thus cannot 
++    // of a regular process (e.g., they call sleep), and thus cannot
+     // be run from main().
+     first = 0;
+     initlog();
+   }
+-  
++
+   // Return to "caller", actually trapret (see allocproc).
+ }
+ 
+@@ -383,8 +442,10 @@ wakeup1(void *chan)
+   struct proc *p;
+ 
+   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+-    if(p->state == SLEEPING && p->chan == chan)
++    if(p->state == SLEEPING && p->chan == chan){
+       p->state = RUNNABLE;
++      enqueue(p);
++    }
+ }
+ 
+ // Wake up all processes sleeping on chan.
+@@ -438,7 +499,7 @@ procdump(void)
+   struct proc *p;
+   char *state;
+   uint pc[10];
+-  
++
+   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+     if(p->state == UNUSED)
+       continue;
+diff -rupN xv6-mac/proc.h xv6/proc.h
+--- xv6-mac/proc.h	2014-02-10 22:37:16.000000000 -0300
++++ xv6/proc.h	2017-05-17 13:31:11.000000000 -0300
+@@ -53,16 +53,19 @@ enum procstate { UNUSED, EMBRYO, SLEEPIN
+ 
+ // Per-process state
+ struct proc {
++  uint ticks;                  // Management the timeslice
+   uint sz;                     // Size of process memory (bytes)
+   pde_t* pgdir;                // Page table
+   char *kstack;                // Bottom of kernel stack for this process
+   enum procstate state;        // Process state
+   volatile int pid;            // Process ID
+   struct proc *parent;         // Parent process
++  struct proc *next;           // Next process in the Level
+   struct trapframe *tf;        // Trap frame for current syscall
+   struct context *context;     // swtch() here to run process
+   void *chan;                  // If non-zero, sleeping on chan
+   int killed;                  // If non-zero, have been killed
++  int level;                   // Level of the proces on mlf struct
+   struct file *ofile[NOFILE];  // Open files
+   struct inode *cwd;           // Current directory
+   char name[16];               // Process name (debugging)
+diff -rupN xv6-mac/syscall.c xv6/syscall.c
+--- xv6-mac/syscall.c	2014-02-10 22:37:16.000000000 -0300
++++ xv6/syscall.c	2017-05-10 16:33:48.000000000 -0300
+@@ -55,7 +55,7 @@ int
+ argptr(int n, char **pp, int size)
+ {
+   int i;
+-  
++
+   if(argint(n, &i) < 0)
+     return -1;
+   if((uint)i >= proc->sz || (uint)i+size > proc->sz)
+@@ -100,31 +100,33 @@ extern int sys_write(void);
+ extern int sys_uptime(void);
+ extern int sys_lseek(void);
+ extern int sys_isatty(void);
++extern int sys_procstat(void);
+ 
+ static int (*syscalls[])(void) = {
+-[SYS_fork]    sys_fork,
+-[SYS_exit]    sys_exit,
+-[SYS_wait]    sys_wait,
+-[SYS_pipe]    sys_pipe,
+-[SYS_read]    sys_read,
+-[SYS_kill]    sys_kill,
+-[SYS_exec]    sys_exec,
+-[SYS_fstat]   sys_fstat,
+-[SYS_chdir]   sys_chdir,
+-[SYS_dup]     sys_dup,
+-[SYS_getpid]  sys_getpid,
+-[SYS_sbrk]    sys_sbrk,
+-[SYS_sleep]   sys_sleep,
+-[SYS_uptime]  sys_uptime,
+-[SYS_open]    sys_open,
+-[SYS_write]   sys_write,
+-[SYS_mknod]   sys_mknod,
+-[SYS_unlink]  sys_unlink,
+-[SYS_link]    sys_link,
+-[SYS_mkdir]   sys_mkdir,
+-[SYS_close]   sys_close,
+-[SYS_lseek]   sys_lseek,
+-[SYS_isatty]  sys_isatty,
++[SYS_fork]      sys_fork,
++[SYS_exit]      sys_exit,
++[SYS_wait]      sys_wait,
++[SYS_pipe]      sys_pipe,
++[SYS_read]      sys_read,
++[SYS_kill]      sys_kill,
++[SYS_exec]      sys_exec,
++[SYS_fstat]     sys_fstat,
++[SYS_chdir]     sys_chdir,
++[SYS_dup]       sys_dup,
++[SYS_getpid]    sys_getpid,
++[SYS_sbrk]      sys_sbrk,
++[SYS_sleep]     sys_sleep,
++[SYS_uptime]    sys_uptime,
++[SYS_open]      sys_open,
++[SYS_write]     sys_write,
++[SYS_mknod]     sys_mknod,
++[SYS_unlink]    sys_unlink,
++[SYS_link]      sys_link,
++[SYS_mkdir]     sys_mkdir,
++[SYS_close]     sys_close,
++[SYS_lseek]     sys_lseek,
++[SYS_isatty]    sys_isatty,
++[SYS_procstat]  sys_procstat,
+ };
+ 
+ void
+diff -rupN xv6-mac/syscall.h xv6/syscall.h
+--- xv6-mac/syscall.h	2014-02-10 22:37:16.000000000 -0300
++++ xv6/syscall.h	2017-05-10 16:33:48.000000000 -0300
+@@ -1,24 +1,25 @@
+ // System call numbers
+-#define SYS_fork    1
+-#define SYS_exit    2
+-#define SYS_wait    3
+-#define SYS_pipe    4
+-#define SYS_read    5
+-#define SYS_kill    6
+-#define SYS_exec    7
+-#define SYS_fstat   8
+-#define SYS_chdir   9
+-#define SYS_dup    10
+-#define SYS_getpid 11
+-#define SYS_sbrk   12
+-#define SYS_sleep  13
+-#define SYS_uptime 14
+-#define SYS_open   15
+-#define SYS_write  16
+-#define SYS_mknod  17
+-#define SYS_unlink 18
+-#define SYS_link   19
+-#define SYS_mkdir  20
+-#define SYS_close  21
+-#define SYS_lseek  22
+-#define SYS_isatty 23
++#define SYS_fork      1
++#define SYS_exit      2
++#define SYS_wait      3
++#define SYS_pipe      4
++#define SYS_read      5
++#define SYS_kill      6
++#define SYS_exec      7
++#define SYS_fstat     8
++#define SYS_chdir     9
++#define SYS_dup      10
++#define SYS_getpid   11
++#define SYS_sbrk     12
++#define SYS_sleep    13
++#define SYS_uptime   14
++#define SYS_open     15
++#define SYS_write    16
++#define SYS_mknod    17
++#define SYS_unlink   18
++#define SYS_link     19
++#define SYS_mkdir    20
++#define SYS_close    21
++#define SYS_lseek    22
++#define SYS_isatty   23
++#define SYS_procstat 24
+diff -rupN xv6-mac/sysproc.c xv6/sysproc.c
+--- xv6-mac/sysproc.c	2014-02-10 22:37:16.000000000 -0300
++++ xv6/sysproc.c	2017-05-10 16:33:48.000000000 -0300
+@@ -60,7 +60,7 @@ sys_sleep(void)
+ {
+   int n;
+   uint ticks0;
+-  
++
+   if(argint(0, &n) < 0)
+     return -1;
+   acquire(&tickslock);
+@@ -82,9 +82,16 @@ int
+ sys_uptime(void)
+ {
+   uint xticks;
+-  
++
+   acquire(&tickslock);
+   xticks = ticks;
+   release(&tickslock);
+   return xticks;
+ }
++
++int
++sys_procstat(void)
++{
++  procdump();
++  return 0;
++}
+diff -rupN xv6-mac/trap.c xv6/trap.c
+--- xv6-mac/trap.c	2014-02-10 22:37:16.000000000 -0300
++++ xv6/trap.c	2017-05-17 13:55:17.000000000 -0300
+@@ -37,6 +37,10 @@ void
+ trap(struct trapframe *tf)
+ {
+   if(tf->trapno == T_SYSCALL){
++    if(proc && proc->state == RUNNING && !proc->killed){
++      growup();
++      yield();
++    }
+     if(proc->killed)
+       exit();
+     proc->tf = tf;
+@@ -103,7 +107,10 @@ trap(struct trapframe *tf)
+   // Force process to give up CPU on clock tick.
+   // If interrupts were on while locks held, would need to check nlock.
+   if(proc && proc->state == RUNNING && tf->trapno == T_IRQ0+IRQ_TIMER)
+-    yield();
++    if(++proc->ticks >= MAXTICS){
++      growold();
++      yield();
++    }
+ 
+   // Check if the process has been killed since we yielded
+   if(proc && proc->killed && (tf->cs&3) == DPL_USER)
+diff -rupN xv6-mac/user/forktest.c xv6/user/forktest.c
+--- xv6-mac/user/forktest.c	2014-02-10 22:37:16.000000000 -0300
++++ xv6/user/forktest.c	2017-05-10 16:33:48.000000000 -0300
+@@ -26,25 +26,27 @@ forktest(void)
+       break;
+     if(pid == 0)
+       exit();
++    if(n==4)
++      procstat();
+   }
+-  
++
+   if(n == N){
+     printf(1, "fork claimed to work N times!\n", N);
+     exit();
+   }
+-  
++
+   for(; n > 0; n--){
+     if(wait() < 0){
+       printf(1, "wait stopped early\n");
+       exit();
+     }
+   }
+-  
++
+   if(wait() != -1){
+     printf(1, "wait got too many\n");
+     exit();
+   }
+-  
++
+   printf(1, "fork test OK\n");
+ }
+ 
+diff -rupN xv6-mac/user/lotprints.c xv6/user/lotprints.c
+--- xv6-mac/user/lotprints.c	1969-12-31 21:00:00.000000000 -0300
++++ xv6/user/lotprints.c	2017-05-06 23:32:20.000000000 -0300
+@@ -0,0 +1,16 @@
++#include "types.h"
++#include "stat.h"
++#include "user.h"
++
++int
++main(int argc, char *argv[])
++{
++  int i;
++  int j = 0;
++  for(i=1; i<1000; i++){
++    j += j*i;
++    printf(1, "run \n");
++  }
++
++  exit();
++}
+diff -rupN xv6-mac/user/param.h.orig xv6/user/param.h.orig
+--- xv6-mac/user/param.h.orig	1969-12-31 21:00:00.000000000 -0300
++++ xv6/user/param.h.orig	2017-05-17 13:34:02.000000000 -0300
+@@ -0,0 +1,13 @@
++#define NPROC        64  // maximum number of processes
++#define KSTACKSIZE 4096  // size of per-process kernel stack
++#define NCPU          8  // maximum number of CPUs
++#define NOFILE       16  // open files per process
++#define NFILE       100  // open files per system
++#define NBUF         10  // size of disk block cache
++#define NINODE       50  // maximum number of active i-nodes
++#define NDEV         10  // maximum major device number
++#define ROOTDEV       1  // device number of file system root disk
++#define MAXARG       32  // max exec arguments
++#define LOGSIZE      10  // max data sectors in on-disk log
++#define MAXTICS      5   // max tics of clock before context switch
++#define NLEVELS      4   // size of levels on mlf
+diff -rupN xv6-mac/user/quantumtest.c xv6/user/quantumtest.c
+--- xv6-mac/user/quantumtest.c	1969-12-31 21:00:00.000000000 -0300
++++ xv6/user/quantumtest.c	2017-05-06 18:33:15.000000000 -0300
+@@ -0,0 +1,14 @@
++#include "types.h"
++#include "stat.h"
++#include "user.h"
++
++int
++main(int argc, char *argv[])
++{
++  int i;
++  int j = 0;
++  for(i=1; i<100000; i++)
++    j += j*i;
++
++  exit();
++}
+diff -rupN xv6-mac/user/size.c xv6/user/size.c
+--- xv6-mac/user/size.c	1969-12-31 21:00:00.000000000 -0300
++++ xv6/user/size.c	2017-05-06 23:40:33.000000000 -0300
+@@ -0,0 +1,15 @@
++#include "types.h"
++#include "stat.h"
++#include "user.h"
++
++int main(void){
++  int i;
++  int j = 0;
++  for(i=1; i<1000; i++){
++    j += j*i;
++    // printf(1,"The size of my address space is %d bytes\n", getmysize());
++    getmysize();
++  }
++
++  exit();
++}
+diff -rupN xv6-mac/user/syscall.h xv6/user/syscall.h
+--- xv6-mac/user/syscall.h	2014-02-10 22:37:16.000000000 -0300
++++ xv6/user/syscall.h	2017-05-10 16:33:48.000000000 -0300
+@@ -1,24 +1,25 @@
+ // System call numbers
+-#define SYS_fork    1
+-#define SYS_exit    2
+-#define SYS_wait    3
+-#define SYS_pipe    4
+-#define SYS_read    5
+-#define SYS_kill    6
+-#define SYS_exec    7
+-#define SYS_fstat   8
+-#define SYS_chdir   9
+-#define SYS_dup    10
+-#define SYS_getpid 11
+-#define SYS_sbrk   12
+-#define SYS_sleep  13
+-#define SYS_uptime 14
+-#define SYS_open   15
+-#define SYS_write  16
+-#define SYS_mknod  17
+-#define SYS_unlink 18
+-#define SYS_link   19
+-#define SYS_mkdir  20
+-#define SYS_close  21
+-#define SYS_lseek  22
+-#define SYS_isatty 23
++#define SYS_fork      1
++#define SYS_exit      2
++#define SYS_wait      3
++#define SYS_pipe      4
++#define SYS_read      5
++#define SYS_kill      6
++#define SYS_exec      7
++#define SYS_fstat     8
++#define SYS_chdir     9
++#define SYS_dup      10
++#define SYS_getpid   11
++#define SYS_sbrk     12
++#define SYS_sleep    13
++#define SYS_uptime   14
++#define SYS_open     15
++#define SYS_write    16
++#define SYS_mknod    17
++#define SYS_unlink   18
++#define SYS_link     19
++#define SYS_mkdir    20
++#define SYS_close    21
++#define SYS_lseek    22
++#define SYS_isatty   23
++#define SYS_procstat 24
+diff -rupN xv6-mac/user/test.c xv6/user/test.c
+--- xv6-mac/user/test.c	1969-12-31 21:00:00.000000000 -0300
++++ xv6/user/test.c	2017-05-06 18:33:15.000000000 -0300
+@@ -0,0 +1,13 @@
++#include "types.h"
++#include "stat.h"
++#include "user.h"
++
++int
++main(int argc, char *argv[])
++{
++  int i;
++
++  for(i=1; i<2000; i++){
++  }
++  exit();
++}
+diff -rupN xv6-mac/user/user.h xv6/user/user.h
+--- xv6-mac/user/user.h	2014-02-10 22:37:16.000000000 -0300
++++ xv6/user/user.h	2017-05-10 16:33:48.000000000 -0300
+@@ -24,6 +24,7 @@ int sleep(int);
+ int uptime(void);
+ int lseek(int, int, int);
+ int isatty(int);
++int procstat(void);
+ 
+ // ulib.c
+ int stat(char*, struct stat*);
+diff -rupN xv6-mac/user/usys.S xv6/user/usys.S
+--- xv6-mac/user/usys.S	2014-02-10 22:37:16.000000000 -0300
++++ xv6/user/usys.S	2017-05-10 16:33:48.000000000 -0300
+@@ -31,3 +31,4 @@ SYSCALL(sleep)
+ SYSCALL(uptime)
+ SYSCALL(lseek)
+ SYSCALL(isatty)
++SYSCALL(procstat)
+diff -rupN xv6-mac/user.h xv6/user.h
+--- xv6-mac/user.h	2014-02-10 22:37:16.000000000 -0300
++++ xv6/user.h	2017-05-10 16:33:48.000000000 -0300
+@@ -24,6 +24,7 @@ int sleep(int);
+ int uptime(void);
+ int lseek(int, int, int);
+ int isatty(int);
++int procstat(void);
+ 
+ // ulib.c
+ int stat(char*, struct stat*);
