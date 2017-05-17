@@ -59,10 +59,12 @@ struct proc {
   enum procstate state;        // Process state
   volatile int pid;            // Process ID
   struct proc *parent;         // Parent process
+  struct proc *next;           // Next process in the Level
   struct trapframe *tf;        // Trap frame for current syscall
   struct context *context;     // swtch() here to run process
   void *chan;                  // If non-zero, sleeping on chan
   int killed;                  // If non-zero, have been killed
+  int level;                   // Level of the proces on mlf struct
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
