@@ -223,6 +223,7 @@ exit(void)
 {
   struct proc *p;
   int fd;
+  int sd;
 
   if(proc == initproc)
     panic("init exiting");
@@ -232,6 +233,14 @@ exit(void)
     if(proc->ofile[fd]){
       fileclose(proc->ofile[fd]);
       proc->ofile[fd] = 0;
+    }
+  }
+
+  Free all semaphore taken
+  for(sd = 0; sd < NOFILE; sd++){
+    if(proc->ofile[sd]){
+      semfree(proc->ofile[sd].sid);
+      proc->ofile[sd] = 0;
     }
   }
 
@@ -517,20 +526,4 @@ procdump(void)
   }
 }
 
-int
-obtainsem()
-{
-  struct free saux = proc->sem_manager.first;
-  int id = saux->sem_id
-  proc->sem_manager.first = proc->sem_manager.first->next;
-  free(saux);
-  return id;
-}
 
-void
-annexsem(int sem_id)
-{
-  struct free ns = malloc(sizeof(struct free));
-  ns->next = NULL;
-  proc->sem_manager.last->next = ns;
-}

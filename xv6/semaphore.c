@@ -1,4 +1,5 @@
 #include "semaphore.h"
+#include "spinlock.h"
 #include <stddef.h>
 
 struct {
@@ -6,32 +7,53 @@ struct {
   struct spinlock lock;
 } stable;
 
+int nextsid = 1;
+
+void
+sinit(void)
+{
+  initlock(&stable.lock, "stable");
+}
+
 // Create or get a descriptor of a semaphore.
 // sem_id is semaphore identificator, or -1 if want to create a new.
 // init_value only used when sem_id is -1.
 int
 semget(int sem_id, int init_value)
 {
+
+  struct semaphore *s;
+
+  acquire(&stable.lock);
   if (sem_id == -1){ // want to create a new.
-    if (stable.first == -1) // there aren't free semaphores.
+    if (stable.first == -1){ // there aren't free semaphores.
+      release(&stable.lock);
       return -3;
+    }
     else{
-      if (proc->smanager.scounter == MAXSEMPROC) // the process already got the max number of semaphores.
+      if (proc->smanager.scounter == MAXSEMPROC){ // the process already got the max number of semaphores.
+        release(&stable.lock);
         return -2;
+      }
       else{
-        int new_sem_id = obtainsem();
-        anexsem(new_sem_id);
-        proc->smanager.scounter++;
-        stable.semaphore[new_sem_id] = malloc(sizeof(struct semaphore));
-        stable.semaphore[new_sem_id].value = init_value;
-        return new_sem_id;
+        for(s = stable.file; s < stable.semaphore + MAXSEM; s++){
+          if(s->ref == 0){
+            s->ref = 1;
+            release(&stable.lock);
+            return s->sid;
+          }
+        }
       }
     }
   } else{
-    if (stable.semaphore[sem_id] == -1) // sem_id is not in used.
+    if (stable.semaphore[sem_id] == -1){ // sem_id is not in used.
+      release(&stable.lock);
       return -1;
-    else
-      return stable.semaphore[sem_id].sem_id;
+    }
+    else{
+      release(&stable.lock);
+      return stable.semaphore[sem_id].sid;
+    }
   }
 }
 

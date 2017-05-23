@@ -1,8 +1,7 @@
 #include "spinlock.h"
 
-struct semaphore{
-  int sem_id;               // Semaphore identificator
+struct sem{
+  int sid;                  // Semaphore identificator
   int value;                // Semaphore identificator
-  int reference_counter;    // Process references counter
-  struct spinlock lock;
+  int ref;                  // Process references counter
 };
