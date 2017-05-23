@@ -1,15 +1,9 @@
 #include "semaphore.h"
 #include <stddef.h>
 
-struct free {
-  int sem_id;
-  struct free *next;
-};
-
 struct {
   struct semaphore semaphore[MAXSEM];
-  struct free *first;
-  struct free *last;
+  struct spinlock lock;
 } stable;
 
 // Create or get a descriptor of a semaphore.
@@ -19,7 +13,7 @@ int
 semget(int sem_id, int init_value)
 {
   if (sem_id == -1){ // want to create a new.
-    if (stable.first == NULL) // there aren't free semaphores.
+    if (stable.first == -1) // there aren't free semaphores.
       return -3;
     else{
       if (proc->smanager.scounter == MAXSEMPROC) // the process already got the max number of semaphores.
@@ -34,7 +28,7 @@ semget(int sem_id, int init_value)
       }
     }
   } else{
-    if (stable.semaphore[sem_id] == NULL) // sem_id is not in used.
+    if (stable.semaphore[sem_id] == -1) // sem_id is not in used.
       return -1;
     else
       return stable.semaphore[sem_id].sem_id;
@@ -47,10 +41,14 @@ semget(int sem_id, int init_value)
 int
 semfree(int sem_id)
 {
-  if (stable.semaphore[sem_id] == NULL)
+  if (stable.semaphore[sem_id] == -1)
     return -1;
 
-  stable.semaphore[sem_id] = NULL
+  if (stable.semaphore[sem_id].ref == 1)
+    stable.semaphore[sem_id] = -1;
+  else
+    stable.semaphore[sem_id].ref--;
+
   return 0;
 }
 
@@ -61,10 +59,13 @@ semfree(int sem_id)
 int
 semdown(int sem_id)
 {
-  if (stable.semaphore[sem_id] == NULL)
+  if (stable.semaphore[sem_id] == -1)
     return -1;
 
-  stable.semaphore[sem_id].value--;
+  if (stable.semaphore[sem_id].value != 0)
+    stable.semaphore[sem_id].value--;
+  else
+    sleep(proc, &ptable.lock);
   return 0;
 }
 
@@ -75,27 +76,17 @@ semdown(int sem_id)
 int
 semup(int sem_id)
 {
-  if (stable.semaphore[sem_id] == NULL)
+  struct proc *p;
+
+  if (stable.semaphore[sem_id].ref == 0)
     return -1;
 
   stable.semaphore[sem_id].value++;
+
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->state == SLEEPING)
+      wakeup(p);
+  }
+
   return 0;
-}
-
-int
-obtain()
-{
-  struct free saux = stable.first;
-  int id = saux->sem_id
-  stable.first = stable.first->next;
-  free(saux);
-  return id;
-}
-
-void
-annex(int sem_id)
-{
-  struct free ns = malloc(sizeof(struct free));
-  ns->next = NULL;
-  stable.last->next = ns;
 }
