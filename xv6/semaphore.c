@@ -1,5 +1,16 @@
 #include "semaphore.h"
 
+struct free {
+  int sem_id;
+  struct free *next;
+};
+
+struct {
+  struct semaphore semaphore[MAXSEM];
+  struct free *first;
+  struct free *last;
+} stable;
+
 // Create or get a descriptor of a semaphore.
 // sem_id is semaphore identificator, or -1 if want to create a new.
 // init_value only used when sem_id is -1.
