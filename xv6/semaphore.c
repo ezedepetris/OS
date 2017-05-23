@@ -18,29 +18,26 @@ struct {
 int
 semget(int sem_id, int init_value)
 {
-  if (sem_id == -1){
-    // want to create a new
-    if (stable->first == NULL){
-      // there aren't free semaphores
+  if (sem_id == -1){ // want to create a new.
+    if (stable.first == NULL) // there aren't free semaphores.
       return -3;
-    } else{
-      if (proc->smanager.scounter == MAXSEMPROC){
-        // the process already got the max number of semaphores
+    else{
+      if (proc->smanager.scounter == MAXSEMPROC) // the process already got the max number of semaphores.
         return -2;
-      } else{
-        semaphore sem = obtain();
-        anex(sem_id);
+      else{
+        int new_sem_id = obtainsem();
+        anexsem(new_sem_id);
         proc->smanager.scounter++;
-        return sem_id;
+        stable.semaphore[new_sem_id] = malloc(sizeof(struct semaphore));
+        stable.semaphore[new_sem_id].value = init_value;
+        return new_sem_id;
       }
     }
   } else{
-    if (stable[sem_id] == NULL){
-      // sem_id is not in used
+    if (stable.semaphore[sem_id] == NULL) // sem_id is not in used.
       return -1;
-    } else{
-      return stable[sem_id]->id
-    }
+    else
+      return stable.semaphore[sem_id].sem_id;
   }
 }
 
@@ -50,10 +47,10 @@ semget(int sem_id, int init_value)
 int
 semfree(int sem_id)
 {
-  if (array[sem_id] == NULL)
+  if (stable.semaphore[sem_id] == NULL)
     return -1;
 
-  array[sem_id] = NULL
+  stable.semaphore[sem_id] = NULL
   return 0;
 }
 
@@ -64,10 +61,10 @@ semfree(int sem_id)
 int
 semdown(int sem_id)
 {
-  if (array[sem_id] == NULL)
+  if (stable.semaphore[sem_id] == NULL)
     return -1;
 
-  array[sem_id]->sem_number--;
+  stable.semaphore[sem_id].value--;
   return 0;
 }
 
@@ -78,10 +75,10 @@ semdown(int sem_id)
 int
 semup(int sem_id)
 {
-  if (array[sem_id] == NULL)
+  if (stable.semaphore[sem_id] == NULL)
     return -1;
 
-  array[sem_id]->sem_number++;
+  stable.semaphore[sem_id].value++;
   return 0;
 }
 

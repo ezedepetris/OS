@@ -517,4 +517,20 @@ procdump(void)
   }
 }
 
+int
+obtainsem()
+{
+  struct free saux = proc->sem_manager.first;
+  int id = saux->sem_id
+  proc->sem_manager.first = proc->sem_manager.first->next;
+  free(saux);
+  return id;
+}
 
+void
+annexsem(int sem_id)
+{
+  struct free ns = malloc(sizeof(struct free));
+  ns->next = NULL;
+  proc->sem_manager.last->next = ns;
+}

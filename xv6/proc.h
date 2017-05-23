@@ -50,8 +50,9 @@ struct context {
 };
 
 struct smanager{
-  struct semaphore *sem_list;  // List of semaphores acquired
-  int scounter;          // Size of list
+  struct free *first;
+  struct free *last;
+  int scounter;                // Size of list
 };
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
