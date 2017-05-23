@@ -1,4 +1,5 @@
 #include "semaphore.h"
+#include <stddef.h>
 
 struct free {
   int sem_id;
@@ -82,4 +83,22 @@ semup(int sem_id)
 
   array[sem_id]->sem_number++;
   return 0;
+}
+
+int
+obtain()
+{
+  struct free saux = stable.first;
+  int id = saux->sem_id
+  stable.first = stable.first->next;
+  free(saux);
+  return id;
+}
+
+void
+annex(int sem_id)
+{
+  struct free ns = malloc(sizeof(struct free));
+  ns->next = NULL;
+  stable.last->next = ns;
 }
