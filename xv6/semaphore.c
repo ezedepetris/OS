@@ -17,7 +17,30 @@ struct {
 int
 semget(int sem_id, int init_value)
 {
-  return 0;
+  if (sem_id == -1){
+    // want to create a new
+    if (stable->first == NULL){
+      // there aren't free semaphores
+      return -3;
+    } else{
+      if (proc->smanager.scounter == MAXSEMPROC){
+        // the process already got the max number of semaphores
+        return -2;
+      } else{
+        semaphore sem = obtain();
+        anex(sem_id);
+        proc->smanager.scounter++;
+        return sem_id;
+      }
+    }
+  } else{
+    if (stable[sem_id] == NULL){
+      // sem_id is not in used
+      return -1;
+    } else{
+      return stable[sem_id]->id
+    }
+  }
 }
 
 // Free some semaphore.
@@ -26,6 +49,10 @@ semget(int sem_id, int init_value)
 int
 semfree(int sem_id)
 {
+  if (array[sem_id] == NULL)
+    return -1;
+
+  array[sem_id] = NULL
   return 0;
 }
 
@@ -36,6 +63,10 @@ semfree(int sem_id)
 int
 semdown(int sem_id)
 {
+  if (array[sem_id] == NULL)
+    return -1;
+
+  array[sem_id]->sem_number--;
   return 0;
 }
 
@@ -46,5 +77,9 @@ semdown(int sem_id)
 int
 semup(int sem_id)
 {
+  if (array[sem_id] == NULL)
+    return -1;
+
+  array[sem_id]->sem_number++;
   return 0;
 }
