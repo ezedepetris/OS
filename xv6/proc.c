@@ -525,5 +525,3 @@ procdump(void)
     cprintf("\n");
   }
 }
-
-
