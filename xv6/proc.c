@@ -7,6 +7,7 @@
 #include "proc.h"
 #include "spinlock.h"
 #include <stddef.h>
+#include "semaphore.c"
 
 struct level{
   struct proc *first;
@@ -236,11 +237,11 @@ exit(void)
     }
   }
 
-  Free all semaphore taken
+  // Free all semaphore taken
   for(sd = 0; sd < NOFILE; sd++){
-    if(proc->ofile[sd]){
-      semfree(proc->ofile[sd].sid);
-      proc->ofile[sd] = 0;
+    if(proc->smanager[sd]){
+      semfree(proc->smanager[sd]->sid);
+      proc->smanager[sd] = 0;
     }
   }
 
@@ -524,4 +525,22 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+// Browse the semaphore's table for look a free slot for
+// a new semaphore
+int
+getindex(struct proc *p)
+{
+  int found, index;
+
+  found = 0;
+  found = 0;
+  while( index < MAXSEMPROC || !found){
+    if (p->smanager[index]->sid == -1)
+      break;
+    index++;
+  }
+
+  return index;
 }

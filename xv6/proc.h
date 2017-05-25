@@ -49,12 +49,6 @@ struct context {
   uint eip;
 };
 
-struct smanager{
-  struct free *first;
-  struct free *last;
-  int scounter;                // Size of list
-};
-
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
@@ -76,6 +70,7 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
   struct sem *smanager[MAXSEMPROC];
+  int scounter;
 };
 
 // Process memory is laid out contiguously, low addresses first:

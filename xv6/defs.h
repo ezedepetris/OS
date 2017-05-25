@@ -118,6 +118,7 @@ void            wakeup(void*);
 void            yield(void);
 void            growold(void);
 void            growup(void);
+int             getindex(struct proc*);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

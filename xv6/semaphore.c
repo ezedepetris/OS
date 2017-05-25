@@ -1,18 +1,27 @@
 #include "semaphore.h"
-#include "spinlock.h"
-#include <stddef.h>
+// #include "spinlock.h"
+
+// extern int getindex(struct proc *p);
 
 struct {
-  struct semaphore semaphore[MAXSEM];
-  struct spinlock lock;
+  struct sem sem[MAXSEM];
+  struct spinlock semlock;
 } stable;
 
 int nextsid = 1;
 
+// Init stable setting -1 in all positions
 void
 sinit(void)
 {
-  initlock(&stable.lock, "stable");
+  initlock(&stable.semlock, "stable");
+  acquire(&stable.semlock);
+  struct sem *s;
+  for(s = stable.sem; s < stable.sem + MAXSEM; s++){
+    s->sid = -1;
+    s->ref = 0;
+  }
+  release(&stable.semlock);
 }
 
 // Create or get a descriptor of a semaphore.
@@ -21,40 +30,41 @@ sinit(void)
 int
 semget(int sem_id, int init_value)
 {
+  struct sem *s;
+  int index;
 
-  struct semaphore *s;
-
-  acquire(&stable.lock);
+  acquire(&stable.semlock);
   if (sem_id == -1){ // want to create a new.
-    if (stable.first == -1){ // there aren't free semaphores.
-      release(&stable.lock);
-      return -3;
+    for(s = stable.sem; s < stable.sem + MAXSEM; s++)
+      if(s->ref == 0){
+        if (proc->scounter == MAXSEMPROC){ // the process already got the max number of semaphores.
+          release(&stable.semlock);
+          return -2;
+        }
+        s->ref = 1;
+        s->value = init_value;
+        s->sid = nextsid;
+        nextsid++;
+        index = getindex(proc);
+        proc->smanager[index] = s;
+        release(&stable.semlock);
+        return s->sid;
+      }
+     // there aren't free semaphores.
+    release(&stable.semlock);
+    return -3;
     }
     else{
-      if (proc->smanager.scounter == MAXSEMPROC){ // the process already got the max number of semaphores.
-        release(&stable.lock);
-        return -2;
-      }
-      else{
-        for(s = stable.file; s < stable.semaphore + MAXSEM; s++){
-          if(s->ref == 0){
-            s->ref = 1;
-            release(&stable.lock);
-            return s->sid;
-          }
-        }
-      }
-    }
-  } else{
-    if (stable.semaphore[sem_id] == -1){ // sem_id is not in used.
-      release(&stable.lock);
+    if (stable.sem[sem_id].sid == -1){ // sem_id is not in used.
+      release(&stable.semlock);
       return -1;
     }
     else{
-      release(&stable.lock);
-      return stable.semaphore[sem_id].sid;
+      release(&stable.semlock);
+      return stable.sem[sem_id].sid;
     }
   }
+  return 0;
 }
 
 // Free some semaphore.
@@ -63,13 +73,14 @@ semget(int sem_id, int init_value)
 int
 semfree(int sem_id)
 {
-  if (stable.semaphore[sem_id] == -1)
+  if (stable.sem[sem_id].sid == -1)
     return -1;
 
-  if (stable.semaphore[sem_id].ref == 1)
-    stable.semaphore[sem_id] = -1;
+  if (stable.sem[sem_id].ref == 1)
+    stable.sem[sem_id].sid = -1;
   else
-    stable.semaphore[sem_id].ref--;
+    stable.sem[sem_id].ref--;
+  proc->scounter--;
 
   return 0;
 }
@@ -81,13 +92,13 @@ semfree(int sem_id)
 int
 semdown(int sem_id)
 {
-  if (stable.semaphore[sem_id] == -1)
+  if (stable.sem[sem_id].sid == -1)
     return -1;
 
-  if (stable.semaphore[sem_id].value != 0)
-    stable.semaphore[sem_id].value--;
+  if (stable.sem[sem_id].value > 0)
+    stable.sem[sem_id].value--;
   else
-    sleep(proc, &ptable.lock);
+    sleep(proc, &stable.sem[sem_id].lock);
   return 0;
 }
 
@@ -98,17 +109,12 @@ semdown(int sem_id)
 int
 semup(int sem_id)
 {
-  struct proc *p;
-
-  if (stable.semaphore[sem_id].ref == 0)
+  if (stable.sem[sem_id].ref == 0)
     return -1;
 
-  stable.semaphore[sem_id].value++;
+  stable.sem[sem_id].value++;
 
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->state == SLEEPING)
-      wakeup(p);
-  }
+  wakeup(proc);
 
   return 0;
 }
