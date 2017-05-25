@@ -95,10 +95,13 @@ semdown(int sem_id)
   if (stable.sem[sem_id].sid == -1)
     return -1;
 
-  if (stable.sem[sem_id].value > 0)
-    stable.sem[sem_id].value--;
-  else
+  acquire(&stable.sem[sem_id].lock);
+  while (stable.sem[sem_id].value == 0)
     sleep(proc, &stable.sem[sem_id].lock);
+
+  stable.sem[sem_id].value--;
+  release(&stable.sem[sem_id].lock);
+
   return 0;
 }
 
