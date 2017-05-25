@@ -95,3 +95,22 @@ sys_procstat(void)
   procdump();
   return 0;
 }
+
+int
+sys_semget(void)
+{
+}
+
+int
+sys_semfree(void)
+{
+}
+
+int
+sys_semup(void)
+{
+}
+
+int
+sys_semdown(void){
+}
