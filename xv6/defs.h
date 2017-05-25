@@ -120,6 +120,13 @@ void            growold(void);
 void            growup(void);
 int             getindex(struct proc*);
 
+// semaphore.c
+int             sinit(void);
+int             semget(int sem_id, int init_value);
+int             semdown(int sem_id);
+int             semup(int sem_id);
+int             semfree(int sem_id);
+
 // swtch.S
 void            swtch(struct context**, struct context*);
 
