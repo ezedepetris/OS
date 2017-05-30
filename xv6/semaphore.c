@@ -60,8 +60,15 @@ semget(int sem_id, int init_value)
       return -1;
     }
     else{
-      release(&stable.semlock);
-      return stable.sem[sem_id].sid;
+      if (proc->scounter == MAXSEMPROC){ // the process already got the max number of semaphores.
+        release(&stable.semlock);
+        return -2;
+      }
+      else{
+        release(&stable.semlock);
+        stable.sem[sem_id].ref++;
+        return stable.sem[sem_id].sid;
+      }
     }
   }
   return 0;
@@ -78,8 +85,8 @@ semfree(int sem_id)
 
   if (stable.sem[sem_id].ref == 1)
     stable.sem[sem_id].sid = -1;
-  else
-    stable.sem[sem_id].ref--;
+
+  stable.sem[sem_id].ref--;
   proc->scounter--;
 
   return 0;
@@ -117,7 +124,9 @@ semup(int sem_id)
 
   stable.sem[sem_id].value++;
 
-  wakeup(proc);
+  struct sem *saux;
+  saux = &stable.sem[sem_id];
+  wakeup(saux);
 
   return 0;
 }

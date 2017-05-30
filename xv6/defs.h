@@ -121,7 +121,7 @@ void            growup(void);
 int             getindex(struct proc*);
 
 // semaphore.c
-void             sinit(void);
+void            sinit(void);
 int             semget(int sem_id, int init_value);
 int             semdown(int sem_id);
 int             semup(int sem_id);
