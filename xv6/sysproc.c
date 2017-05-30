@@ -99,18 +99,40 @@ sys_procstat(void)
 int
 sys_semget(void)
 {
+  int sid, init_value;
+
+  if(argint(0, &sid) < 0)
+    return -1;
+  if(argint(1, &init_value) < 0)
+    return -1;
+  return semget(sid, init_value);
 }
 
 int
 sys_semfree(void)
 {
+  int sid;
+
+  if(argint(0, &sid) < 0)
+    return -1;
+  return semfree(sid);
 }
 
 int
 sys_semup(void)
 {
+  int sid;
+
+  if(argint(0, &sid) < 0)
+    return -1;
+  return semup(sid);
 }
 
 int
 sys_semdown(void){
+   int sid;
+
+  if(argint(0, &sid) < 0)
+    return -1;
+  return semdown(sid);
 }

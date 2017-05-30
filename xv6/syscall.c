@@ -132,7 +132,7 @@ static int (*syscalls[])(void) = {
 [SYS_isatty]    sys_isatty,
 [SYS_procstat]  sys_procstat,
 [SYS_semfree]   sys_semfree,
-[SYSsem_get]    sys_semget,
+[SYS_semget]    sys_semget,
 [SYS_semup]     sys_semup,
 [SYS_semdown]   sys_semdown,
 };
