@@ -27,6 +27,7 @@ main(void)
   ioapicinit();    // another interrupt controller
   consoleinit();   // I/O devices & their interrupts
   uartinit();      // serial port
+  sinit();         // semahopre table
   pinit();         // process table
   tvinit();        // trap vectors
   binit();         // buffer cache
@@ -37,6 +38,7 @@ main(void)
     timerinit();   // uniprocessor timer
   startothers();   // start other processors
   kinit2(P2V(4*1024*1024), P2V(PHYSTOP)); // must come after startothers()
+  seminit();
   userinit();      // first user process
   // Finish setting up this processor in mpmain.
   mpmain();
@@ -46,7 +48,7 @@ main(void)
 static void
 mpenter(void)
 {
-  switchkvm(); 
+  switchkvm();
   seginit();
   lapicinit();
   mpmain();
@@ -83,7 +85,7 @@ startothers(void)
     if(c == cpus+cpunum())  // We've started already.
       continue;
 
-    // Tell entryother.S what stack to use, where to enter, and what 
+    // Tell entryother.S what stack to use, where to enter, and what
     // pgdir to use. We cannot use kpgdir yet, because the AP processor
     // is running in low  memory, so we use entrypgdir for the APs too.
     stack = kalloc();
@@ -101,7 +103,7 @@ startothers(void)
 
 // Boot page table used in entry.S and entryother.S.
 // Page directories (and page tables), must start on a page boundary,
-// hence the "__aligned__" attribute.  
+// hence the "__aligned__" attribute.
 // Use PTE_PS in page directory entry to enable 4Mbyte pages.
 __attribute__((__aligned__(PGSIZE)))
 pde_t entrypgdir[NPDENTRIES] = {

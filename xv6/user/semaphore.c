@@ -35,47 +35,47 @@ seminit(void)
 int
 semget(int sem_id, int init_value)
 {
-  struct sem *s;
-  int index;
+  // struct sem *s;
+  // int index;
 
-  acquire(&stable.semlock);
-  if (sem_id == -1){ // want to create a new.
-    for(s = stable.sem; s < stable.sem + MAXSEM; s++)
-      if(s->ref == 0){
-        if (proc->scounter == MAXSEMPROC){ // the process already got the max number of semaphores.
-          release(&stable.semlock);
-          return -2;
-        }
-        s->ref = 1;
-        s->value = init_value;
-        s->sid = nextsid;
-        nextsid++;
-        index = getindex(proc);
-        proc->smanager[index] = s;
-        release(&stable.semlock);
-        return s->sid;
-      }
-     // there aren't free semaphores.
-    release(&stable.semlock);
-    return -3;
-    }
-    else{
-    if (stable.sem[sem_id].sid == -1){ // sem_id is not in used.
-      release(&stable.semlock);
-      return -1;
-    }
-    else{
-      if (proc->scounter == MAXSEMPROC){ // the process already got the max number of semaphores.
-        release(&stable.semlock);
-        return -2;
-      }
-      else{
-        release(&stable.semlock);
-        stable.sem[sem_id].ref++;
-        return stable.sem[sem_id].sid;
-      }
-    }
-  }
+  // acquire(&stable.semlock);
+  // if (sem_id == -1){ // want to create a new.
+  //   for(s = stable.sem; s < stable.sem + MAXSEM; s++)
+  //     if(s->ref == 0){
+  //       if (proc->scounter == MAXSEMPROC){ // the process already got the max number of semaphores.
+  //         release(&stable.semlock);
+  //         return -2;
+  //       }
+  //       s->ref = 1;
+  //       s->value = init_value;
+  //       s->sid = nextsid;
+  //       nextsid++;
+  //       index = getindex(proc);
+  //       proc->smanager[index] = s;
+  //       release(&stable.semlock);
+  //       return s->sid;
+  //     }
+  //    // there aren't free semaphores.
+  //   release(&stable.semlock);
+  //   return -3;
+  //   }
+  //   else{
+  //   if (stable.sem[sem_id].sid == -1){ // sem_id is not in used.
+  //     release(&stable.semlock);
+  //     return -1;
+  //   }
+  //   else{
+  //     if (proc->scounter == MAXSEMPROC){ // the process already got the max number of semaphores.
+  //       release(&stable.semlock);
+  //       return -2;
+  //     }
+  //     else{
+  //       release(&stable.semlock);
+  //       stable.sem[sem_id].ref++;
+  //       return stable.sem[sem_id].sid;
+  //     }
+  //   }
+  // }
   return 0;
 }
 

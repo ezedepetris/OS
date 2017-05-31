@@ -39,3 +39,9 @@ void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
 int atoi(const char*);
+
+//semaphore.c
+int semget(int, int);
+int semdown(int);
+int semup(int);
+int semfree(int);
