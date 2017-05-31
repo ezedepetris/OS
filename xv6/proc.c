@@ -82,6 +82,34 @@ found:
   return p;
 }
 
+static void
+dequeue()
+{
+  if(ptable.mlf[proc->level].first->next == NULL){
+    ptable.mlf[proc->level].first = NULL;
+    ptable.mlf[proc->level].last = NULL;
+  }
+  else{
+    ptable.mlf[proc->level].first = ptable.mlf[proc->level].first->next;
+  }
+}
+
+static void
+enqueue(struct proc *p)
+{
+  int level = p->level;
+  if (ptable.mlf[level].first == NULL){
+    ptable.mlf[level].first = p;
+    ptable.mlf[level].last = p;
+  }
+  else{
+    ptable.mlf[level].last->next = p;
+    ptable.mlf[level].last = p;
+  }
+  current_level = 0;
+  p->next = NULL;
+}
+
 //PAGEBREAK: 32
 // Set up first user process.
 void
@@ -109,11 +137,8 @@ userinit(void)
   p->cwd = namei("/");
 
   p->level = 0;
-  p->next = NULL;
-  ptable.mlf[0].first = p;
-  ptable.mlf[0].last = p;
-
   p->state = RUNNABLE;
+  enqueue(p);
 }
 
 // Grow current process's memory by n bytes.
@@ -137,43 +162,19 @@ growproc(int n)
 }
 
 void
-dequeue()
-{
-  if(ptable.mlf[proc->level].first->next == NULL){
-    ptable.mlf[proc->level].first = NULL;
-    ptable.mlf[proc->level].last = NULL;
-  }
-  else{
-    ptable.mlf[proc->level].first = ptable.mlf[proc->level].first->next;
-  }
-}
-
-void
-enqueue(struct proc *p)
-{
-  int level = p->level;
-  if (ptable.mlf[level].first == NULL){
-    ptable.mlf[level].first = p;
-    ptable.mlf[level].last = p;
-  }
-  else{
-    ptable.mlf[level].last->next = p;
-    ptable.mlf[level].last = p;
-  }
-  p->next = NULL;
-}
-
-void
 growup(void)
 {
-  if(proc->level>0) proc->level--;
+  if(proc->level>0){
+    proc->level--;
+    current_level--;
+  }
 }
 
 
 void
 growold(void)
 {
-  if(proc->level<3) proc->level++;
+  if(proc->level<MLF_SIZE-1) proc->level++;
 }
 
 // Create a new process copying p as the parent.
@@ -311,6 +312,12 @@ wait(void)
   }
 }
 
+int
+isEmpty()
+{
+  return ptable.mlf[current_level].first == NULL;
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -330,7 +337,7 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    while(ptable.mlf[current_level].first != NULL){
+    while(!isEmpty()){
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
@@ -348,7 +355,7 @@ scheduler(void)
       proc = 0;
     }
     current_level++;
-    current_level %= 4;
+    current_level %= MLF_SIZE;
 
     release(&ptable.lock);
 
@@ -532,15 +539,12 @@ procdump(void)
 int
 getindex(struct proc *p)
 {
-  int found, index;
-
-  found = 0;
-  found = 0;
-  while( index < MAXSEMPROC || !found){
+  int index = 0;
+  while( index < MAXSEMPROC ){
     if (p->smanager[index]->sid == -1)
-      break;
+      return index;
     index++;
   }
 
-  return index;
+  return -1;
 }

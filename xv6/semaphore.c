@@ -29,6 +29,17 @@ seminit(void)
   release(&stable.semlock);
 }
 
+int
+getsemindex(int sem_id)
+{
+  int i;
+  for(i = 0; i < MAXSEM; i++)
+    if (stable.sem[i].sid == sem_id)
+      return i;
+
+  return -1;
+}
+
 // Create or get a descriptor of a semaphore.
 // sem_id is semaphore identificator, or -1 if want to create a new.
 // init_value only used when sem_id is -1.
@@ -85,13 +96,17 @@ semget(int sem_id, int init_value)
 int
 semfree(int sem_id)
 {
-  if (stable.sem[sem_id].sid == -1)
+    int index;
+  index = getsemindex(sem_id);
+
+
+  if (stable.sem[index].sid == -1)
     return -1;
 
-  if (stable.sem[sem_id].ref == 1)
-    stable.sem[sem_id].sid = -1;
+  if (stable.sem[index].ref == 1)
+    stable.sem[index].sid = -1;
 
-  stable.sem[sem_id].ref--;
+  stable.sem[index].ref--;
   proc->scounter--;
 
   return 0;
@@ -104,15 +119,19 @@ semfree(int sem_id)
 int
 semdown(int sem_id)
 {
-  if (stable.sem[sem_id].sid == -1)
+    int index;
+  index = getsemindex(sem_id);
+
+
+  if (stable.sem[index].sid == -1)
     return -1;
 
-  acquire(&stable.sem[sem_id].lock);
-  while (stable.sem[sem_id].value == 0)
-    sleep(proc, &stable.sem[sem_id].lock);
+  acquire(&stable.sem[index].lock);
+  while (stable.sem[index].value == 0)
+    sleep(proc, &stable.sem[index].lock);
 
-  stable.sem[sem_id].value--;
-  release(&stable.sem[sem_id].lock);
+  stable.sem[index].value--;
+  release(&stable.sem[index].lock);
 
   return 0;
 }
@@ -124,14 +143,19 @@ semdown(int sem_id)
 int
 semup(int sem_id)
 {
-  if (stable.sem[sem_id].ref == 0)
+  int index;
+  index = getsemindex(sem_id);
+
+  if (stable.sem[index].ref == 0)
     return -1;
 
-  stable.sem[sem_id].value++;
+  stable.sem[index].value++;
 
   struct sem *saux;
-  saux = &stable.sem[sem_id];
+  saux = &stable.sem[index];
   wakeup(saux);
 
   return 0;
 }
+
+

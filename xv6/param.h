@@ -13,3 +13,4 @@
 #define NLEVELS      4   // size of levels on mlf
 #define MAXSEM       3   // max sem on the entire system
 #define MAXSEMPROC   3   // max semaphore by process
+#define MLF_SIZE     4   // levels of MLF

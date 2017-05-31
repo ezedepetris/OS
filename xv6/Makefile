@@ -178,7 +178,8 @@ UPROGS=\
 	_zombie\
 	_zz\
 	_lseek-test\
-	_semaphoretest
+	_semaphoretest\
+	_ps
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
