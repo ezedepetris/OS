@@ -49,12 +49,12 @@ exec(char *path, char **argv)
   iunlockput(ip);
   ip = 0;
 
-  // Allocate two pages at the next page boundary.
-  // Make the first inaccessible.  Use the second as the user stack.
-  sz = PGROUNDUP(sz);
-  if((sz = allocuvm(pgdir, sz, sz + 2*PGSIZE)) == 0)
+  // Allocate STACKPAGES pages at the next page boundary.
+  // Make the first inaccessible.  Use the last as the user stack.
+  sz = PGROUNDUP(sz)+PGSIZE*STACKPAGES;
+  if((sz = allocuvm(pgdir, sz, sz + PGSIZE)) == 0)
     goto bad;
-  clearpteu(pgdir, (char*)(sz - 2*PGSIZE));
+  clearpteu(pgdir, (char*)(sz - (STACKPAGES-1)*PGSIZE));
   sp = sz;
 
   // Push argument strings, prepare rest of stack in ustack.
