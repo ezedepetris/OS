@@ -13,6 +13,13 @@ factorial(int number)
     return number * factorial(number-1);
 }
 
+void
+biglocalarray(int number)
+{
+  int array[number];
+  printf(1, "%d\n", array[0]);
+}
+
 int
 main(int argc, char const *argv[])
 {
@@ -20,6 +27,7 @@ main(int argc, char const *argv[])
 
   number = factorial(atoi(argv[1]));
   printf(1, "%d\n", number);
+  // biglocalarray(atoi(argv[1]));
 
   exit();
 }

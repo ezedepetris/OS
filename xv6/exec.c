@@ -54,7 +54,8 @@ exec(char *path, char **argv)
   sz = PGROUNDUP(sz)+PGSIZE*STACKPAGES;
   if((sz = allocuvm(pgdir, sz, sz + PGSIZE)) == 0)
     goto bad;
-  clearpteu(pgdir, (char*)(sz - (STACKPAGES-1)*PGSIZE));
+  proc->lastpage = PGROUNDDOWN(sz-PGSIZE);
+  cprintf("last stack page %x\n", proc->lastpage);
   sp = sz;
 
   // Push argument strings, prepare rest of stack in ustack.

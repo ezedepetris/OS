@@ -99,9 +99,15 @@ trap(struct trapframe *tf)
   //TRAP 14
   case T_STACK:
   case T_PGFLT:
-    if (tf->esp-rcr2() <= PGSIZE*2){ //stack overflow
-      if (proc->sz-rcr2() < PGSIZE*2)
-        allocuvm(proc->pgdir, PGROUNDDOWN(rcr2()), PGROUNDUP(rcr2()));
+    if (proc->lastpage-rcr2() <= PGSIZE*STACKPAGES){ //stack overflow
+      if (proc->sz-rcr2() < PGSIZE*STACKPAGES){
+        allocuvm(proc->pgdir, PGROUNDDOWN(rcr2()), PGROUNDDOWN(proc->lastpage));
+        proc->lastpage = PGROUNDDOWN(rcr2());
+        cprintf("STACK GROW--pid %d %s: trap %d err %d on cpu %d "
+          "eip 0x%x addr 0x%x esp: 0x%x\n",
+          proc->pid, proc->name, tf->trapno, tf->err, cpu->id, tf->eip,
+          rcr2(), tf->esp);
+        }
       else{
         cprintf("STACK OFERFLOW--pid %d %s: trap %d err %d on cpu %d "
           "eip 0x%x addr 0x%x--kill proc\n",
